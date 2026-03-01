@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { isAuthenticated, hasAdminAccess, hasSuperAdminAccess } from "@/lib/auth";
 import AuthPage from "./pages/Auth";
 import Layout from "./components/Layout";
-import DashboardHome from "./pages/DashboardHome"; // Your empty state content
+import ProtectedRoute from "./components/ProtectedRoute";
+import RoleGuard from "./components/RoleGuard";
+import DashboardHome from "./pages/DashboardHome";
 import ProfilePage from "./pages/Profile";
 import CreateGroup from "./pages/Admin/CreateGroup";
 import MemberDashboard from "./pages/MemberDashboard";
@@ -16,27 +19,25 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Route */}
         <Route path="/auth" element={<AuthPage />} />
 
-        {/* Protected Dashboard Routes */}
-        <Route element={<Layout />}>
-          <Route path="/dashboard" element={<DashboardHome />} />
-          <Route path="/create-chit-groups" element={<CreateGroup />} />
-          <Route path="/chit-groups" element={<GroupList />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/my-chit" element={<MemberDashboard />} />
+            <Route path="/profile" element={<ProfilePage />} />
 
-          <Route path="/chit-groups/add-members/:groupId" element={<AddMembers />} />
-          <Route path="/chit-groups/group-members" element={<GroupMembers />} />
-          <Route path="/chit-groups/auctions/:groupId" element={<AuctionEntry />} />
-          <Route path="/chit-groups/map-members/:groupId" element={<MapMembersToGroup />} />
-
-          <Route path="/my-chit" element={<MemberDashboard />} />
-          <Route path="/users" element={<ManageAdmins />} />
-          <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/users" element={<RoleGuard requireSuperAdmin><ManageAdmins /></RoleGuard>} />
+            <Route path="/dashboard" element={<RoleGuard requireAdmin><DashboardHome /></RoleGuard>} />
+            <Route path="/create-chit-groups" element={<RoleGuard requireAdmin><CreateGroup /></RoleGuard>} />
+            <Route path="/chit-groups" element={<RoleGuard requireAdmin><GroupList /></RoleGuard>} />
+            <Route path="/chit-groups/add-members/:groupId" element={<RoleGuard requireAdmin><AddMembers /></RoleGuard>} />
+            <Route path="/chit-groups/group-members" element={<RoleGuard requireAdmin><GroupMembers /></RoleGuard>} />
+            <Route path="/chit-groups/auctions/:groupId" element={<RoleGuard requireAdmin><AuctionEntry /></RoleGuard>} />
+            <Route path="/chit-groups/map-members/:groupId" element={<RoleGuard requireAdmin><MapMembersToGroup /></RoleGuard>} />
+          </Route>
         </Route>
 
-        {/* Default Redirect */}
-        <Route path="/" element={<Navigate to="/auth" replace />} />
+        <Route path="/" element={<Navigate to={isAuthenticated() ? (hasSuperAdminAccess() ? "/users" : hasAdminAccess() ? "/dashboard" : "/my-chit") : "/auth"} replace />} />
       </Routes>
     </BrowserRouter>
   );

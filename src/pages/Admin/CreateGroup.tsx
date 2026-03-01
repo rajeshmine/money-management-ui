@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Calculator, Users, Info } from "lucide-react";
+import { Calculator, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 
 export default function CreateChitGroup() {
   const navigate = useNavigate();
@@ -17,15 +18,14 @@ export default function CreateChitGroup() {
     paymentType: "VARIABLE"
   });
 
-  const baseInstallment = formData.totalValue / formData.duration;
+  const count = formData.membersCount; // same as duration
+  const baseInstallment = formData.totalValue / count;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Get logged-in admin details from storage
     const id = localStorage.getItem("id");
     const companyName = localStorage.getItem("companyName");
-    const token = localStorage.getItem("token");
 
     const payload = {
       ...formData,
@@ -34,45 +34,28 @@ export default function CreateChitGroup() {
     };
 
     try {
-      const response = await fetch('http://localhost:3001/api/groups/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // If using JWT
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        alert("குழு வெற்றிகரமாக உருவாக்கப்பட்டது! (Group Created!)");
-        navigate("/dashboard"); // Redirect to list
-      } else {
-        const errData = await response.json();
-        alert("Error: " + errData.message);
-      }
-    } catch (error) {
-      console.error("API Error:", error);
-      alert("Check if backend server is running.");
+      await api.post("/api/groups/create", payload);
+      alert("குழு வெற்றிகரமாக உருவாக்கப்பட்டது! (Group Created!)");
+      navigate("/dashboard");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Check if backend server is running.");
     }
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex justify-between items-end">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900">Create New Group</h2>
-          <p className="text-slate-500 font-tamil">புதிய ஏலக் குழுவை உருவாக்கவும்</p>
-        </div>
+    <div className="space-y-6 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Create New Group</h1>
+        <p className="text-slate-500 mt-1 text-sm">புதிய ஏலக் குழுவை உருவாக்கவும்</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* FORM SECTION */}
-        <Card className="lg:col-span-2 shadow-sm border-0">
-          <CardHeader>
-            <CardTitle className="text-lg">Group Configuration</CardTitle>
+        <Card className="lg:col-span-2 border border-slate-200/80 bg-white rounded-xl overflow-hidden card-elevated">
+          <CardHeader className="border-b border-slate-100 px-5 py-4">
+            <CardTitle className="text-base font-semibold text-slate-900">Group Configuration</CardTitle>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSave} className="space-y-6">
+          <CardContent className="px-5 py-5">
+            <form onSubmit={handleSave} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="gname">Group Name / குழு பெயர்</Label>
                 <Input
@@ -88,17 +71,24 @@ export default function CreateChitGroup() {
                   <Label htmlFor="value">Total Value (₹)</Label>
                   <Input
                     type="number"
+                    id="value"
                     value={formData.totalValue}
                     onChange={(e) => setFormData({ ...formData, totalValue: Number(e.target.value) })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duration (Months)</Label>
+                  <Label htmlFor="membersCount">Members & Duration / உறுப்பினர்கள் & தவணை</Label>
                   <Input
                     type="number"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
+                    id="membersCount"
+                    min={2}
+                    value={formData.membersCount}
+                    onChange={(e) => {
+                      const count = Math.max(2, Number(e.target.value) || 2);
+                      setFormData({ ...formData, membersCount: count, duration: count });
+                    }}
                   />
+                  <p className="text-xs text-slate-500">Same value for members count and installments (months)</p>
                 </div>
               </div>
 
@@ -111,7 +101,7 @@ export default function CreateChitGroup() {
                 >
                   <Label
                     htmlFor="v"
-                    className={`flex items-center space-x-3 border p-4 rounded-xl cursor-pointer transition-all ${formData.paymentType === 'VARIABLE' ? 'border-blue-600 bg-blue-50' : 'hover:bg-slate-50'}`}
+                    className={`flex items-center space-x-3 border p-4 rounded-lg cursor-pointer transition-all ${formData.paymentType === 'VARIABLE' ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-200' : 'border-slate-200 hover:bg-slate-50'}`}
                   >
                     <RadioGroupItem value="VARIABLE" id="v" />
                     <div>
@@ -122,7 +112,7 @@ export default function CreateChitGroup() {
 
                   <Label
                     htmlFor="f"
-                    className={`flex items-center space-x-3 border p-4 rounded-xl cursor-pointer transition-all ${formData.paymentType === 'FIXED' ? 'border-blue-600 bg-blue-50' : 'hover:bg-slate-50'}`}
+                    className={`flex items-center space-x-3 border p-4 rounded-lg cursor-pointer transition-all ${formData.paymentType === 'FIXED' ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-200' : 'border-slate-200 hover:bg-slate-50'}`}
                   >
                     <RadioGroupItem value="FIXED" id="f" />
                     <div>
@@ -133,7 +123,7 @@ export default function CreateChitGroup() {
                 </RadioGroup>
               </div>
 
-              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-lg">
+              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 h-11 rounded-lg font-medium">
                 Save & Initialize Group
               </Button>
             </form>
@@ -141,8 +131,8 @@ export default function CreateChitGroup() {
         </Card>
 
         {/* SUMMARY & PREVIEW */}
-        <div className="space-y-6">
-          <Card className="bg-slate-900 text-white border-0 shadow-xl overflow-hidden relative">
+        <div className="space-y-4">
+          <Card className="bg-slate-900 text-white border-0 rounded-xl overflow-hidden relative">
             <div className="absolute top-0 right-0 p-4 opacity-10">
               <Calculator size={80} />
             </div>
@@ -161,20 +151,20 @@ export default function CreateChitGroup() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Total Collection</span>
-                  <span className="font-semibold text-green-400">₹{formData.totalValue.toLocaleString()}</span>
+                  <span className="font-semibold text-emerald-400">₹{formData.totalValue.toLocaleString()}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3 text-amber-800">
+          <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-4 flex gap-3 text-amber-800">
             <Info className="shrink-0 h-5 w-5 mt-0.5" />
             <div className="text-xs space-y-1">
               <p className="font-bold uppercase">Note for Admin:</p>
               {formData.paymentType === 'VARIABLE' ? (
                 <p>In **Variable Mode**, this ₹{baseInstallment} is the maximum installment. The actual amount will be lower based on monthly auction bids.</p>
               ) : (
-                <p>In **Fixed Mode**, members will pay exactly ₹{baseInstallment} every month for {formData.duration} months.</p>
+                <p>In **Fixed Mode**, members will pay exactly ₹{baseInstallment} every month for {count} months.</p>
               )}
             </div>
           </div>

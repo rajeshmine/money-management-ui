@@ -16,6 +16,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog";
 import { UserPlus, Building2, ShieldCheck, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function ManageAdmins() {
   const [admins, setAdmins] = useState([]);
@@ -36,11 +37,10 @@ export default function ManageAdmins() {
 
   const fetchAdmins = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/super/admins');
-      const data = await res.json();
-      setAdmins(data);
-    } catch (error) {
-      console.error("Failed to fetch admins");
+      const data = await api.get("/api/super/admins");
+      setAdmins(data as never[]);
+    } catch {
+      // Failed to fetch admins
     }
   };
 
@@ -48,40 +48,32 @@ export default function ManageAdmins() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/super/create-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (res.ok) {
-        setIsOpen(false); // Close modal
-        setFormData({ name: "", phone: "", password: "", companyName: "" }); // Reset form
-        fetchAdmins(); // Refresh list
-      } else {
-        const error = await res.json();
-        alert(error.message);
-      }
-    } catch (error) {
-      alert("System error");
+      await api.post("/api/super/create-admin", formData);
+      setIsOpen(false);
+      setFormData({ name: "", phone: "", password: "", companyName: "" });
+      fetchAdmins();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "System error");
     } finally {
       setLoading(false);
     }
   };
 
   const toggleAdminStatus = async (id: string) => {
-    const res = await fetch(`http://localhost:3001/api/super/toggle-status/${id}`, {
-      method: 'PATCH'
-    });
-    if (res.ok) fetchAdmins();
+    try {
+      await api.patch(`/api/super/toggle-status/${id}`);
+      fetchAdmins();
+    } catch {
+      // Failed to toggle
+    }
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold flex items-center gap-2">
-            <ShieldCheck className="text-blue-600" /> Super Admin Dashboard
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <ShieldCheck className="text-teal-600" /> Manage Admins
           </h2>
           <p className="text-slate-500 font-tamil">நிர்வாகிகளை நிர்வகிக்கவும் (Manage Admins)</p>
         </div>
@@ -89,7 +81,7 @@ export default function ManageAdmins() {
         {/* CREATE ADMIN DIALOG */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+            <Button className="bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl shadow-lg shadow-teal-500/25">
               <UserPlus className="mr-2 h-4 w-4" /> Create New Admin
             </Button>
           </DialogTrigger>
@@ -138,7 +130,7 @@ export default function ManageAdmins() {
                 </div>
               </div>
               <DialogFooter>
-                <Button type="submit" className="w-full bg-blue-600" disabled={loading}>
+                <Button type="submit" className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 rounded-xl" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Admin
                 </Button>
@@ -148,7 +140,7 @@ export default function ManageAdmins() {
         </Dialog>
       </div>
 
-      <Card className="shadow-md">
+      <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
         <CardHeader>
           <CardTitle>Registered Admin Users</CardTitle>
         </CardHeader>
@@ -167,7 +159,7 @@ export default function ManageAdmins() {
                 <TableRow key={admin._id}>
                   <TableCell>
                     <div className="font-bold text-slate-900">{admin.name}</div>
-                    <div className="text-xs flex items-center text-blue-600">
+                    <div className="text-xs flex items-center text-teal-600">
                       <Building2 className="h-3 w-3 mr-1" /> {admin.companyName}
                     </div>
                   </TableCell>

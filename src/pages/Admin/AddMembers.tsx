@@ -4,10 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Save, ArrowLeft } from "lucide-react";
+import { UserPlus, ArrowLeft } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function AddMembers() {
-  const { groupId } = useParams(); // Get ID from URL
+  const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -23,38 +24,31 @@ export default function AddMembers() {
   const handleRegisterAndAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    try {
-      // 1. Create User/Member API call
-      const res = await fetch('http://localhost:3001/api/admin/create-member', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...memberData }),
-      });
 
-      if (res.ok) {
-        alert("Member registered!");
-        setMemberData({ name: "", phone: "", password: "123", status: "ACTIVE", role: "MEMBER", createdBy: localStorage.getItem("id") || "" });
-      } else {
-        alert("Member already exists or error occurred.");
+    try {
+      const res = await api.post<{ memberId: string }>("/api/admin/create-member", memberData);
+      setMemberData({ name: "", phone: "", password: "123", status: "ACTIVE", role: "MEMBER", createdBy: localStorage.getItem("id") || "" });
+      if (groupId && res?.memberId) {
+        await api.post("/api/admin/map-to-group", { memberId: res.memberId, chitGroupId: groupId });
       }
+      alert(groupId ? "Member added and assigned to group!" : "Member registered!");
     } catch (err) {
-      console.error(err);
+      alert(err instanceof Error ? err.message : "Member already exists or error occurred.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <Button variant="ghost" onClick={() => navigate("/groups")} className="mb-4">
+    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+      <Button variant="ghost" onClick={() => navigate("/chit-groups")} className="rounded-xl -ml-2">
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Groups
       </Button>
 
-      <Card>
+      <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl font-bold">
-            <UserPlus className="text-blue-600" /> 
+          <CardTitle className="flex items-center gap-2 text-xl font-bold text-slate-800">
+            <UserPlus className="text-teal-600" /> 
             Add New Member to Group
           </CardTitle>
           <p className="text-sm text-slate-500 font-tamil">புதிய உறுப்பினரைச் சேர்க்கவும்</p>
@@ -81,7 +75,7 @@ export default function AddMembers() {
               />
             </div>
             <div className="pt-4">
-              <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl shadow-lg shadow-teal-500/25">
                 {loading ? "Adding..." : "Add Member to Group / உறுப்பினரைச் சேர்க்கவும்"}
               </Button>
             </div>

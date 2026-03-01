@@ -1,37 +1,87 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp, Wallet, Info, CheckCircle } from "lucide-react";
+import { TrendingUp, Wallet, Info, CheckCircle, Users } from "lucide-react";
+import { getStoredAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
+
+interface Group {
+  _id: string;
+  groupName: string;
+  totalValue: number;
+  duration: number;
+  membersCount: number;
+  paymentType: string;
+}
+
+interface Auction {
+  _id: string;
+  installmentNo: number;
+  auctionDate: string;
+  groupId: { groupName: string };
+  winnerId: { name: string };
+  bidAmount: number;
+  payableAmount: number;
+  dividendPerMember: number;
+}
 
 export default function MemberDashboard() {
-  // Mock data for a single member: "Ravi Kumar"
-  const memberName = "Ravi Kumar";
-  const groupName = "Ela-5000-A";
-  const totalPaid = 13200;
-  const totalDividendSaved = 2800; // Money saved due to auction discounts
+  const { name, id } = getStoredAuth();
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [payments, setPayments] = useState<Auction[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const paymentHistory = [
-    { month: 1, base: 5000, dividend: 1200, paid: 3800, date: "05 Jan 2026", status: "Paid" },
-    { month: 2, base: 5000, dividend: 1000, paid: 4000, date: "02 Feb 2026", status: "Paid" },
-    { month: 3, base: 5000, dividend: 600, paid: 4400, date: "-", status: "Pending" },
-  ];
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        const [groupsData, paymentsData] = await Promise.all([
+          api.get<Group[]>("/api/members/my-groups"),
+          api.get<Auction[]>("/api/members/my-payments"),
+        ]);
+        setGroups(groupsData ?? []);
+        setPayments(paymentsData ?? []);
+      } catch {
+        setGroups([]);
+        setPayments([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, []);
+
+  const totalPaid = payments.reduce((sum, a) => sum + (a.payableAmount ?? 0), 0);
+  const totalDividend = payments.reduce((sum, a) => sum + (a.dividendPerMember ?? 0), 0);
+  const nextPayable = payments.length > 0 ? payments[0].payableAmount : 0;
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto p-10 text-center text-slate-500">Loading...</div>
+    );
+  }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-10">
-      {/* WELCOME HEADER */}
-      <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg">
-        <p className="text-blue-100 text-sm">Welcome back / வருக,</p>
-        <h2 className="text-2xl font-bold">{memberName}</h2>
-        <div className="mt-4 flex gap-4 text-xs font-medium">
-          <span className="bg-white/20 px-3 py-1 rounded-full">Group: {groupName}</span>
-          <span className="bg-white/20 px-3 py-1 rounded-full">ID: #042</span>
+    <div className="max-w-4xl mx-auto space-y-6 pb-10 animate-fade-in">
+      <div className="bg-gradient-to-r from-teal-500 via-teal-600 to-emerald-600 rounded-2xl p-6 text-white shadow-xl shadow-teal-500/25">
+        <p className="text-teal-100 text-sm">Welcome back / வருக,</p>
+        <h2 className="text-2xl font-bold">{name || "Member"}</h2>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
+          {groups.slice(0, 3).map((g) => (
+            <span key={g._id} className="bg-white/25 px-3 py-1 rounded-full text-sm">
+              {g.groupName}
+            </span>
+          ))}
+          {id && (
+            <span className="bg-white/20 px-3 py-1 rounded-full">
+              ID: #{String(id).slice(-6)}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* MEMBER STATS */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <Card className="border-0 shadow-sm bg-green-50">
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl bg-emerald-50/80">
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-green-600 mb-1">
+            <div className="flex items-center gap-2 text-emerald-600 mb-1">
               <CheckCircle className="h-4 w-4" />
               <span className="text-[10px] font-bold uppercase">Total Paid</span>
             </div>
@@ -39,33 +89,55 @@ export default function MemberDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-blue-50">
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl bg-teal-50/80">
           <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-blue-600 mb-1">
+            <div className="flex items-center gap-2 text-teal-600 mb-1">
               <TrendingUp className="h-4 w-4" />
               <span className="text-[10px] font-bold uppercase">Total Savings</span>
             </div>
-            <div className="text-xl font-bold text-slate-900">₹{totalDividendSaved.toLocaleString()}</div>
+            <div className="text-xl font-bold text-slate-900">₹{totalDividend.toLocaleString()}</div>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-amber-50 col-span-2 md:col-span-1">
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl bg-amber-50/80 col-span-2 md:col-span-1">
           <CardContent className="pt-4 text-center md:text-left">
             <div className="flex items-center gap-2 text-amber-600 mb-1 justify-center md:justify-start">
               <Wallet className="h-4 w-4" />
-              <span className="text-[10px] font-bold uppercase">Next Payable</span>
+              <span className="text-[10px] font-bold uppercase">Last Installment</span>
             </div>
-            <div className="text-xl font-bold text-slate-900">₹4,400</div>
+            <div className="text-xl font-bold text-slate-900">₹{nextPayable.toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* PAYMENT HISTORY */}
-      <Card className="border-0 shadow-sm">
+      {groups.length > 0 && (
+        <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5 text-teal-500" />
+              My Groups / எனது குழுக்கள்
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {groups.map((g) => (
+                <div
+                  key={g._id}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-sm font-medium"
+                >
+                  {g.groupName} — ₹{g.totalValue?.toLocaleString()} ({g.paymentType})
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Info className="h-5 w-5 text-slate-400" />
-            My Payment History / எனது வரலாறு
+            <Info className="h-5 w-5 text-teal-500" />
+            Payment History / எனது வரலாறு
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -73,30 +145,39 @@ export default function MemberDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left">Month</th>
-                  <th className="px-4 py-3 text-left">Paid Amount</th>
-                  <th className="px-4 py-3 text-left">Dividend</th>
-                  <th className="px-4 py-3 text-right">Status</th>
+                  <th className="px-4 py-3 text-left">Installment</th>
+                  <th className="px-4 py-3 text-left">Group</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Winner</th>
+                  <th className="px-4 py-3 text-right">Paid</th>
+                  <th className="px-4 py-3 text-right">Dividend</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {paymentHistory.map((item) => (
-                  <tr key={item.month} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-4 font-medium">Month {item.month}</td>
-                    <td className="px-4 py-4">
-                      <div>₹{item.paid}</div>
-                      <div className="text-[10px] text-slate-400">{item.date}</div>
-                    </td>
-                    <td className="px-4 py-4 text-green-600 font-medium">₹{item.dividend}</td>
-                    <td className="px-4 py-4 text-right">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                        item.status === "Paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      }`}>
-                        {item.status === "Paid" ? "PAID" : "PENDING"}
-                      </span>
+                {payments.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                      No payment records yet.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  payments.map((a) => (
+                    <tr key={a._id} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-4 font-medium">#{a.installmentNo}</td>
+                      <td className="px-4 py-4">{a.groupId?.groupName ?? "—"}</td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {a.auctionDate ? new Date(a.auctionDate).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-4 py-4 font-medium text-teal-700">
+                        {a.winnerId?.name ?? "—"}
+                      </td>
+                      <td className="px-4 py-4 text-right">₹{(a.payableAmount ?? 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-right text-green-600">
+                        ₹{(a.dividendPerMember ?? 0).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

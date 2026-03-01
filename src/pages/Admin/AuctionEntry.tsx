@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Gavel, Calculator, Calendar, User } from "lucide-react";
+import { Gavel, Calculator } from "lucide-react";
 import AuctionHistory from "./AuctionHistory";
+import { api } from "@/lib/api";
 
 interface Member {
   _id: string;
@@ -15,56 +16,73 @@ interface Member {
 }
 export default function AuctionEntry() {
   const { groupId } = useParams();
-  const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [group, setGroup] = useState<any>(null);
 
   // States based on the uploaded image
-  const [bidAmount, setBidAmount] = useState(0); // தள்ளுபடி
+  const [bidAmount, setBidAmount] = useState(0); // Amount winner receives
+  const [adminFees, setAdminFees] = useState(0); // Admin consultation fees
   const [winnerId, setWinnerId] = useState("");
-  const [installmentNo, setInstallmentNo] = useState(""); // தவணை
+  const [installmentNo, setInstallmentNo] = useState<string>(""); // தவணை
   const [auctionDate, setAuctionDate] = useState("2026-01-01"); // தேதி
 
-  useEffect(() => {
-    // Fetch members and group info
-    fetch(`http://localhost:3001/api/groups/${groupId}/members`)
-      .then(res => res.json())
-      .then(data => {
-        const uniqueMembers = Array.from(
-          new Map(
-            data.members
-              .filter((m: any) => m !== null)
-              .map((m: Member) => [m._id, m])
-          ).values()
-        ) as Member[]; // Cast the result to Member array
+  const [existingAuctions, setExistingAuctions] = useState<any[]>([]);
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0);
 
-        // 2. This will no longer throw the 'never' error
-        setMembers(uniqueMembers);
-        // setMembers(data.members);
-        setGroup(data.group);
-      });
+  const loadData = () => {
+    if (!groupId) return;
+    Promise.all([
+      api.get(`/api/groups/${groupId}/members`),
+      api.get(`/api/auctions/group/${groupId}`).catch(() => [])
+    ]).then(([membersData, auctionsData]: [any, any]) => {
+      const uniqueMembers = Array.from(
+        new Map(
+          membersData.members
+            ?.filter((m: any) => m !== null)
+            ?.map((m: Member) => [m._id, m]) ?? []
+        ).values()
+      ) as Member[];
+      setMembers(uniqueMembers);
+      setGroup(membersData.group);
+      const auctions = Array.isArray(auctionsData) ? auctionsData : [];
+      setExistingAuctions(auctions);
+      const totalInstallments = membersData.group?.membersCount ?? membersData.group?.duration ?? 1;
+      const maxNo = auctions.length > 0 ? Math.max(...auctions.map((a: any) => a.installmentNo || 0)) : 0;
+      setInstallmentNo((prev) => prev || String(Math.min(maxNo + 1, totalInstallments)));
+    });
+  };
+
+  useEffect(() => {
+    loadData();
   }, [groupId]);
 
+  useEffect(() => {
+    if (historyRefreshTrigger > 0 && groupId) {
+      api.get(`/api/auctions/group/${groupId}`).then((data: any) => {
+        setExistingAuctions(Array.isArray(data) ? data : []);
+      }).catch(() => {});
+    }
+  }, [historyRefreshTrigger, groupId]);
 
-  // --- UPDATED CALCULATION LOGIC (2% Commission System) ---
+
+  // Members who already won in this group - disable in winner selection
+  const winnerIds = new Set(
+    existingAuctions.map((a: any) => {
+      const w = a.winnerId;
+      return typeof w === "object" && w?._id ? w._id : w;
+    }).filter(Boolean)
+  );
+
+  // --- UPDATED CALCULATION: bidAmount + adminFees = total collected from all members ---
   const totalChitValue = group?.totalValue || 200000;
   const totalMembers = group?.membersCount || 20;
 
-  // 1. Organizer Commission (Fixed 2% of total value)
-  const organizerCommission = totalChitValue * 0.02;
-
-  // 2. Dividend (Bid Amount - Commission) divided by members
-  // If Bid is 40,000: (40,000 - 4,000) / 20 = 1,800
-  const totalDividendPool = bidAmount - organizerCommission;
-  const dividendPerMember = totalDividendPool > 0 ? totalDividendPool / totalMembers : 0;
-
-  // 3. 1 சீட்டுத் தொகை (What each member pays)
-  // 10,000 - 1,800 = 8,200
-  const baseInstallment = totalChitValue / totalMembers;
-  const monthlyInstallment = baseInstallment - dividendPerMember;
-
-  // 4. Winner Receives (மீதித்தொகை)
-  const remainingAmount = totalChitValue - bidAmount;
+  // Winner receives bid amount; admin gets consultation fees
+  // Total collected = bidAmount + adminFees
+  // Each member pays = (bidAmount + adminFees) / totalMembers
+  const totalCollected = bidAmount + adminFees;
+  const payableAmount = totalMembers > 0 ? totalCollected / totalMembers : 0;
+  const remainingAmount = bidAmount; // Winner receives bid amount
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,42 +90,45 @@ export default function AuctionEntry() {
     const payload = {
       groupId,
       winnerId,
-      bidAmount, // தள்ளுபடி
-      installmentNo, // தவணை
+      bidAmount,
+      adminFees,
+      installmentNo,
       auctionDate,
-      remainingAmount, // மீதித்தொகை
-      payableAmount: monthlyInstallment, // 1 சீட்டுத் தொகை
-      dividend: dividendPerMember
+      remainingAmount,
+      chitValue: totalChitValue,
+      payableAmount,
+      dividendPerMember: 0
     };
 
-    const res = await fetch('http://localhost:3001/api/auctions/entry', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
+    try {
+      await api.post("/api/auctions/entry", payload);
       alert("ஏலம் வெற்றிகரமாக பதிவு செய்யப்பட்டது!");
-      navigate(`/groups/members/${groupId}`);
+      setHistoryRefreshTrigger((k) => k + 1);
+      setBidAmount(0);
+      setAdminFees(0);
+      setWinnerId("");
+      const totalInstallments = group?.membersCount ?? group?.duration ?? 1;
+      setInstallmentNo(String(Math.min(Number(installmentNo) + 1, totalInstallments)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save auction");
     }
   };
 
   return (
     <>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Gavel className="text-blue-600" /> Auction Entry / ஏலப் பதிவு
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Gavel className="text-teal-600" /> Auction Entry / ஏலப் பதிவு
           </h2>
-          <div className="text-right">
-            <p className="text-sm text-gray-500 font-medium">Chit Value / சீட்டுத் தொகை</p>
-            <p className="text-xl font-bold text-blue-600">₹{totalChitValue.toLocaleString()}</p>
+          <div className="text-right bg-teal-50 px-4 py-2 rounded-xl">
+            <p className="text-sm text-slate-500 font-medium">Chit Value</p>
+            <p className="text-xl font-bold text-teal-700">₹{totalChitValue.toLocaleString()}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* INPUT FORM */}
-          <Card className="shadow-md">
+          <Card className="border-0 shadow-lg shadow-slate-200/50 rounded-2xl overflow-hidden">
             <CardHeader>
               <CardTitle className="text-lg">Auction Details / விவரங்கள்</CardTitle>
             </CardHeader>
@@ -118,47 +139,76 @@ export default function AuctionEntry() {
                   <Input type="date" value={auctionDate} onChange={(e) => setAuctionDate(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Installment / தவணை</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 12"
-                    onChange={(e) => setInstallmentNo(e.target.value)}
-                  />
+                  <Label>Installment / தவணை (1 of {group?.membersCount ?? group?.duration ?? "—"} members)</Label>
+                  <Select value={installmentNo} onValueChange={setInstallmentNo}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={group ? `Select 1–${group.membersCount ?? group.duration}` : "Select installment"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: Math.max(1, group?.membersCount ?? group?.duration ?? 1) }, (_, i) => i + 1).map((n) => {
+                        const total = group?.membersCount ?? group?.duration ?? 1;
+                        return (
+                          <SelectItem key={n} value={String(n)}>
+                            #{n} of {total} {n === total ? "(Last - completes chit)" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label>Winner Name / ஏலம் எடுத்தவர்</Label>
-                <Select onValueChange={setWinnerId}>
+                <Select value={winnerId} onValueChange={setWinnerId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Member" />
+                    <SelectValue placeholder="Select Member (already-won disabled)" />
                   </SelectTrigger>
                   <SelectContent>
-                    {members.map((m: any) => (
-                      <SelectItem key={m._id} value={m._id}>{m.name}</SelectItem>
-                    ))}
+                    {members.map((m: any) => {
+                      const hasWon = winnerIds.has(m._id);
+                      return (
+                        <SelectItem
+                          key={m._id}
+                          value={m._id}
+                          disabled={hasWon}
+                        >
+                          {m.name} {hasWon ? "(Already won)" : ""}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Bid (Discount) / தள்ளுபடி தொகை (₹)</Label>
+                <Label>Bid Amount (Winner Receives) / ஏலம் எடுத்தவருக்கு (₹)</Label>
                 <Input
                   type="number"
                   className="text-lg font-semibold"
                   placeholder="e.g. 40000"
-                  onChange={(e) => setBidAmount(Number(e.target.value))}
+                  value={bidAmount || ""}
+                  onChange={(e) => setBidAmount(Number(e.target.value) || 0)}
                 />
               </div>
 
-              <Button onClick={handleSubmit} className="w-full bg-blue-600 hover:bg-blue-700 text-white mt-4">
+              <div className="space-y-2">
+                <Label>Admin Consultation Fees / நிர்வாக கட்டணம் (₹)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 1000"
+                  value={adminFees || ""}
+                  onChange={(e) => setAdminFees(Number(e.target.value) || 0)}
+                />
+              </div>
+
+              <Button onClick={handleSubmit} className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white mt-4 rounded-xl shadow-lg shadow-teal-500/25">
                 Save Auction Entry / பதிவு செய்
               </Button>
             </CardContent>
           </Card>
 
-          {/* CALCULATION VIEW (Matches Paper Image) */}
-          <Card className="bg-slate-900 text-white border-none shadow-xl">
+          <Card className="bg-gradient-to-br from-slate-800 to-slate-900 text-white border-0 shadow-xl rounded-2xl overflow-hidden">
             <CardHeader className="border-b border-slate-800">
               <CardTitle className="text-slate-400 flex items-center gap-2">
                 <Calculator size={18} /> Receipt Preview / ரசீது
@@ -166,35 +216,30 @@ export default function AuctionEntry() {
             </CardHeader>
             <CardContent className="pt-6 space-y-5">
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">சீட்டுத் தொகை (Total Value)</span>
-                <span className="text-lg font-medium">₹{totalChitValue.toLocaleString()}</span>
+                <span className="text-slate-400">Winner Receives (ஏலம் எடுத்தவருக்கு)</span>
+                <span className="text-lg font-medium text-teal-300">₹{bidAmount.toLocaleString()}</span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">தள்ளுபடி (Bid Amount)</span>
-                <span className="text-lg font-medium text-red-400">- ₹{bidAmount.toLocaleString()}</span>
+                <span className="text-slate-400">Admin Fees (நிர்வாக கட்டணம்)</span>
+                <span className="text-lg font-medium text-amber-400">₹{adminFees.toLocaleString()}</span>
               </div>
 
               <div className="flex justify-between items-center p-3 bg-slate-800 rounded-lg">
-                <span className="font-bold text-blue-300">மீதித்தொகை (Winner Balance)</span>
-                <span className="text-xl font-bold text-blue-300">₹{remainingAmount.toLocaleString()}</span>
+                <span className="font-bold text-slate-300">Total Collected (அனைவரும் செலுத்தியது)</span>
+                <span className="text-xl font-bold">₹{totalCollected.toLocaleString()}</span>
               </div>
 
               <hr className="border-slate-800" />
 
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">தவணை லாபம் (Dividend)</span>
-                <span className="text-green-400">₹{dividendPerMember.toLocaleString()}</span>
-              </div>
-
               <div className="flex justify-between items-center pt-4">
                 <div>
-                  <p className="text-sm text-slate-400">1 சீட்டுத் தொகை</p>
-                  <p className="text-xs text-slate-500">(Monthly Installment)</p>
+                  <p className="text-sm text-slate-400">Each Member Pays (1 சீட்டுத் தொகை)</p>
+                  <p className="text-xs text-slate-500">(bid + admin fees) ÷ {totalMembers} members</p>
                 </div>
                 <div className="text-right">
                   <span className="text-3xl font-black text-green-500">
-                    ₹{monthlyInstallment.toLocaleString()}
+                    ₹{payableAmount.toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -202,7 +247,7 @@ export default function AuctionEntry() {
           </Card>
         </div>
       </div>
-      <AuctionHistory />
+      <AuctionHistory refreshTrigger={historyRefreshTrigger} />
     </>
   );
 }
